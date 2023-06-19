@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: bbox-clt
+  name: bbox-clt
+spec:
+  containers:
+  - name: clt
+    command:
+    - /bin/sh
+    - -c
+    - |
+      echo Starting client
+      while true ; do nc "$HOST" "$PORT"; sleep 2 ; done
+    env:
+    - name: PORT
+      value: "3485"
+    - name: HOST
+      value: bbox-srv
+    image: busybox
+    resources: {}
+  restartPolicy: Never

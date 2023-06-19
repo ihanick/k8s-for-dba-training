@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bbox
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      run: bbox
+  template:
+    metadata:
+      labels:
+        run: bbox
+    spec:
+      containers:
+      - name: srv
+        command:
+        - /bin/sh
+        - -c
+        - |
+          sleep 5
+          while true; do
+            for i in $(seq 1 3) ; do hostname | nc -l -p "$LISTEN_PORT" ; done
+            sleep 20
+          done
+        readinessProbe:
+          tcpSocket:
+            port: 3485
+          periodSeconds: 10
+          initialDelaySeconds: 6
+        env:
+        - name: LISTEN_PORT
+          value: "3485"
+        image: busybox
+        resources: {}

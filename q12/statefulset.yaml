@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: bbox
+spec:
+  replicas: 5
+  serviceName: bbox
+  selector:
+    matchLabels:
+      run: bbox
+  template:
+    metadata:
+      labels:
+        run: bbox
+    spec:
+      initContainers:
+      - name: boostrap
+        command:
+        - /bin/sh
+        - -x
+        - -c
+        - |
+          [ -f /srv/data.txt ] && exit 0
+          NUM=$(hostname | cut -d- -f 2)
+          cat <<EOF > /srv/data.txt
+          My num: $NUM
+          Init date: $( date )
+          EOF
+        image: busybox
+        resources: {}
+        volumeMounts:
+        - name: data
+          mountPath: /srv
+      containers:
+      - name: srv
+        command:
+        - /bin/sh
+        - -c
+        - |
+          shutdown_service() {
+            pkill -9 -P $$
+          }
+          trap "shutdown_service" HUP INT QUIT TERM USR1
+          sleep 5
+          while true; do
+            for i in $(seq 1 3) ; do (cat /srv/data.txt; date; hostname) | nc -l -p "$LISTEN_PORT" ; done
+            sleep 20
+          done
+        readinessProbe:
+          tcpSocket:
+            port: 3485
+          periodSeconds: 10
+          initialDelaySeconds: 6
+        env:
+        - name: LISTEN_PORT
+          value: "3485"
+        image: busybox
+        resources: {}
+        volumeMounts:
+        - name: data
+          mountPath: /srv
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 100Mi
