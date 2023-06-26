@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helloto-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: hellotoop
+  template:
+    metadata:
+      labels:
+        run: hellotoop
+    spec:
+      containers:
+      - name: operator
+        command:
+        - /bin/sh
+        - -c
+        - -x
+        - |
+          APISERVER=https://kubernetes.default.svc
+          SERVICEACCOUNT=/var/run/secrets/kubernetes.io/serviceaccount
+          NAMESPACE=$(cat ${SERVICEACCOUNT}/namespace) TOKEN=$(cat ${SERVICEACCOUNT}/token)
+          CACERT=${SERVICEACCOUNT}/ca.crt
+          while true ; do
+            curl --cacert ${CACERT} --header "Authorization: Bearer ${TOKEN}" -X GET ${APISERVER}/api/apps/v1/namespaces/default/statefulsets
+            curl -s --cacert ${CACERT} --header "Authorization: Bearer ${TOKEN}" -X GET ${APISERVER}/apis/stable.percona.local/v1/namespaces/default/hellotos | jq -r '.items[] | [.metadata.name, .spec.helloName, .spec.image, .spec.replicas] | join(" ")' | while IFS= read -r line ; do
+              NAME=$(echo $line | cut -d ' ' -f 1)
+              HELLO=$(echo $line | cut -d ' ' -f 2)
+              IMG=$(echo $line | cut -d ' ' -f 3)
+              REPLICAS=$(echo $line | cut -d ' ' -f 4)
+              echo "Name: $NAME, Hello: $HELLO, image: $IMG, replicas: $REPLICAS"
+              if curl --cacert ${CACERT} --header "Authorization: Bearer ${TOKEN}" -X GET ${APISERVER}/apis/apps/v1/namespaces/default/statefulsets/"$NAME" | grep -q NotFound ; then
+                curl --cacert ${CACERT} --header "Authorization: Bearer ${TOKEN}" -X POST -H 'Content-Type: application/yaml' ${APISERVER}/apis/apps/v1/namespaces/default/statefulsets --data '
+          apiVersion: apps/v1
+          kind: StatefulSet
+          metadata:
+            name: '"$NAME"'
+          spec:
+            replicas: '"$REPLICAS"'
+            serviceName: '"$NAME"'
+            selector:
+              matchLabels:
+                run: '"$NAME"'
+            template:
+              metadata:
+                labels:
+                  run: '"$NAME"'
+              spec:
+                initContainers:
+                - name: boostrap
+                  command:
+                  - /bin/sh
+                  - -x
+                  - -c
+                  - |
+                    [ -f /srv/data.txt ] && exit 0
+                    NUM=$(hostname | cut -d- -f 2)
+                    cat <<EOF > /srv/data.txt
+                    My num: $NUM
+                    Init date: $( date )
+                    Hello '"$HELLO"'
+                    EOF
+                  image: busybox
+                  resources: {}
+                  volumeMounts:
+                  - name: data
+                    mountPath: /srv
+                containers:
+                - name: srv
+                  command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    shutdown_service() {
+                      pkill -9 -P $$
+                    }
+                    trap "shutdown_service" HUP INT QUIT TERM USR1
+                    sleep 5
+                    while true; do
+                      for i in $(seq 1 3) ; do (cat /srv/data.txt; date; hostname) | nc -l -p "$LISTEN_PORT" ; done
+                      sleep 20
+                    done
+                  readinessProbe:
+                    tcpSocket:
+                      port: 3485
+                    periodSeconds: 10
+                    initialDelaySeconds: 6
+                  env:
+                  - name: LISTEN_PORT
+                    value: "3485"
+                  image: busybox
+                  resources: {}
+                  volumeMounts:
+                  - name: data
+                    mountPath: /srv
+            volumeClaimTemplates:
+            - metadata:
+                name: data
+              spec:
+                  accessModes: [ "ReadWriteOnce" ]
+                  resources:
+                    requests:
+                      storage: 100Mi
+          '
+              fi
+            done 
+            
+            sleep 10
+          done
+        image: apteno/alpine-jq
+      serviceAccount: helloto-operator

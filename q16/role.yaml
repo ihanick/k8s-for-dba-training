@@ -1,0 +1,17 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader
+rules:
+- apiGroups: [""] # core API group
+  resources: ["pods"]
+  verbs: ["get", "watch", "list"]
+---
+# $ kubectl create sa curl-sa
+# $ kubectl create rolebinding curl-pod-reader --role=pod-reader --serviceaccount=default:curl-sa
+# $ kubectl run curlapi -it --rm --overrides='{ "spec": { "serviceAccount": "curl-sa" }  }' --image=curlimages/curl:8.1.2 -- /bin/sh
+# APISERVER=https://kubernetes.default.svc
+# SERVICEACCOUNT=/var/run/secrets/kubernetes.io/serviceaccount
+# NAMESPACE=$(cat ${SERVICEACCOUNT}/namespace) TOKEN=$(cat ${SERVICEACCOUNT}/token)
+# CACERT=${SERVICEACCOUNT}/ca.crt
+# curl --cacert ${CACERT} --header "Authorization: Bearer ${TOKEN}" -X GET ${APISERVER}/apis/v1/pods

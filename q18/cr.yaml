@@ -1,0 +1,8 @@
+apiVersion: stable.percona.local/v1
+kind: HelloTo
+metadata:
+  name: helloto1
+spec:
+  helloName: Nick
+  image: "busybox:latest"
+  replicas: 5

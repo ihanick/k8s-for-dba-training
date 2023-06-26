@@ -1,0 +1,29 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: helloto-operator
+rules:
+- apiGroups: ["stable.percona.local"] # core API group
+  resources: ["hellotos"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: helloto-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: helloto-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: helloto-operator
+subjects:
+- kind: ServiceAccount
+  name: helloto-operator
+  namespace: default
