@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "helloto.fullname" . }}
+  labels:
+    {{- include "helloto.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "helloto.fullname" . }}
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "helloto.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "helloto.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "helloto.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+      - name: boostrap
+        command:
+        - /bin/sh
+        - -x
+        - -c
+        - |
+          [ -f /srv/data.txt ] && exit 0
+          NUM=$(hostname | cut -d- -f 2)
+          cat <<EOF > /srv/data.txt
+          My num: $NUM
+          Init date: $( date )
+          EOF
+        image: busybox
+        resources: {}
+        volumeMounts:
+        - name: data
+          mountPath: /srv
+      containers:
+      - name: {{ .Chart.Name }}
+        command:
+        - /bin/sh
+        - -c
+        - |
+          shutdown_service() {
+            pkill -9 -P $$
+          }
+          trap "shutdown_service" HUP INT QUIT TERM USR1
+          sleep 5
+          while true; do
+            for i in $(seq 1 3) ; do (cat /srv/data.txt; date; hostname) | nc -l -p "$LISTEN_PORT" ; done
+            sleep 20
+          done
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.service.port }}
+          periodSeconds: 10
+          initialDelaySeconds: 6
+        env:
+        - name: LISTEN_PORT
+          value: "{{ .Values.service.port }}"
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+        volumeMounts:
+        - name: data
+          mountPath: /srv
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 100Mi
